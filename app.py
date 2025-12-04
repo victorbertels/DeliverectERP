@@ -33,7 +33,7 @@ def convert_to_upload_format(df_or_series, location="Times Square"):
 
 # Page configuration
 st.set_page_config(
-    page_title="VPOS | Inventory Management System",
+    page_title="DPOS | Inventory Management System",
     page_icon="🏪",
     layout="wide",
     initial_sidebar_state="expanded"
