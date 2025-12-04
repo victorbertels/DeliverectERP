@@ -42,11 +42,6 @@ st.set_page_config(
 # Custom CSS for POS/ERP styling
 st.markdown("""
     <style>
-    /* Main container styling */
-    .main {
-        background-color: #f5f7fa;
-    }
-    
     /* Header styling */
     .pos-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -55,15 +50,6 @@ st.markdown("""
         margin-bottom: 2rem;
         color: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    /* Card styling */
-    .metric-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-left: 4px solid #667eea;
     }
     
     /* Status badge */
@@ -76,18 +62,27 @@ st.markdown("""
     }
     
     .status-in-stock {
-        background-color: #d4edda;
-        color: #155724;
+        background-color: #28a745;
+        color: white;
     }
     
     .status-out-of-stock {
-        background-color: #f8d7da;
-        color: #721c24;
+        background-color: #dc3545;
+        color: white;
     }
     
-    /* Sidebar styling */
+    /* Sidebar styling - adapts to theme */
     [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
+        background-color: rgba(0, 0, 0, 0.02);
+        border-right: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Dark mode adjustments */
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stSidebar"] {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
     }
     
     /* Button styling */
@@ -138,11 +133,33 @@ st.markdown(f"""
 
 # Sidebar - Configuration
 with st.sidebar:
-    st.markdown("### ⚙️ Configuration")
-    st.markdown("")
+    # Prominent configuration section
+    st.markdown("""
+        <div style='
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        '>
+            <h2 style='color: white; margin: 0; font-size: 1.5rem;'>⚙️ Configuration</h2>
+            <p style='color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 0.9rem;'>
+                Connect to Deliverect
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # Account Configuration
-    account_id = st.text_input("Account ID", value="", placeholder="Enter Deliverect Account ID")
+    # Account Configuration with helper text
+    st.markdown("**🔗 Account Settings**")
+    account_id = st.text_input(
+        "Account ID",
+        value="",
+        placeholder="Enter Deliverect Account ID"
+    )
+
+    st.markdown("---")
+    st.caption("📍 Location: Times Square")
+
     
     # Hidden settings (still needed for functionality)
     location = "Times Square"  # Default location
@@ -153,7 +170,7 @@ with st.sidebar:
 toolbar_col1, toolbar_col2, toolbar_col3, toolbar_col4 = st.columns([2, 1, 1, 2])
 
 with toolbar_col1:
-    search_term = st.text_input("🔍 Search", placeholder="Product name, PLU, or category...", label_visibility="collapsed")
+    search_term = st.text_input("🔍 Search Products", placeholder="Product name, PLU, or category...")
 
 with toolbar_col2:
     category_filter = st.selectbox("Category", ["All"] + sorted(st.session_state.df['Category 1'].unique().tolist()))
@@ -163,6 +180,41 @@ with toolbar_col3:
 
 with toolbar_col4:
     items_per_page = st.selectbox("Items per page", [20, 50, 100], index=0)
+
+# Sync button at top
+if len(st.session_state.modified_items) > 0:
+    st.markdown("")
+    sync_col1, sync_col2, sync_col3 = st.columns([2, 2, 2])
+    with sync_col2:
+        if st.button(f"🚀 SYNC {len(st.session_state.modified_items)} ITEMS TO DELIVERECT", type="primary", use_container_width=True, key="sync_top"):
+            if not account_id:
+                st.error("⚠️ Account ID required")
+            else:
+                try:
+                    with st.spinner(f"⏳ Syncing {len(st.session_state.modified_items)} items..."):
+                        # Get all modified products
+                        modified_products = st.session_state.df.loc[list(st.session_state.modified_items)]
+                        
+                        # Convert to upload format
+                        upload_df = convert_to_upload_format(modified_products, location)
+                        
+                        # Convert to CSV
+                        csv_buffer = io.StringIO()
+                        upload_df.to_csv(csv_buffer, index=False)
+                        csv_text = csv_buffer.getvalue()
+                        
+                        # Upload
+                        signed_url, upload_headers, file_id = request_signed_url(account_id, callback_url)
+                        upload_csv(csv_text, signed_url, upload_headers)
+                        
+                        # Clear modifications and update sync time
+                        st.session_state.modified_items.clear()
+                        st.session_state.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        st.success(f"✅ Successfully synced {len(modified_products)} items!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Sync failed: {str(e)}")
 
 st.markdown("---")
 
@@ -295,7 +347,7 @@ st.markdown("""
         gap: 1rem;
     }
     .page-info {
-        color: #666;
+        opacity: 0.7;
         font-size: 0.9rem;
         font-weight: 500;
     }
@@ -311,27 +363,28 @@ with nav_col2:
     # Modern pagination controls with custom styling
     st.markdown("""
         <style>
-        /* Custom pagination button styling */
+        /* Custom pagination button styling - adapts to theme */
         div[data-testid="column"] > div > div > button[kind="secondary"] {
             border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            background: white;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            background: rgba(102, 126, 234, 0.05);
             color: #667eea;
             font-weight: 600;
             padding: 0.5rem 1rem;
             transition: all 0.3s ease;
         }
         div[data-testid="column"] > div > div > button[kind="secondary"]:hover {
-            background: #f5f7ff;
+            background: rgba(102, 126, 234, 0.15);
             border-color: #667eea;
             transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.15);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.25);
         }
         div[data-testid="column"] > div > div > button[kind="secondary"]:disabled {
-            background: #f5f5f5;
-            color: #ccc;
-            border-color: #e0e0e0;
+            background: rgba(0, 0, 0, 0.05);
+            color: rgba(102, 126, 234, 0.3);
+            border-color: rgba(0, 0, 0, 0.1);
             cursor: not-allowed;
+            opacity: 0.5;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -372,39 +425,11 @@ with nav_col2:
 
 with nav_col3:
     if len(st.session_state.modified_items) > 0:
-        if st.button(f"🚀 SYNC {len(st.session_state.modified_items)} ITEMS", type="primary", use_container_width=True):
-            if not account_id:
-                st.error("⚠️ Account ID required")
-            else:
-                try:
-                    with st.spinner(f"⏳ Syncing {len(st.session_state.modified_items)} items..."):
-                        # Get all modified products
-                        modified_products = st.session_state.df.loc[list(st.session_state.modified_items)]
-                        
-                        # Convert to upload format
-                        upload_df = convert_to_upload_format(modified_products, location)
-                        
-                        # Convert to CSV
-                        csv_buffer = io.StringIO()
-                        upload_df.to_csv(csv_buffer, index=False)
-                        csv_text = csv_buffer.getvalue()
-                        
-                        # Upload
-                        signed_url, upload_headers, file_id = request_signed_url(account_id, callback_url)
-                        upload_csv(csv_text, signed_url, upload_headers)
-                        
-                        # Clear modifications and update sync time
-                        st.session_state.modified_items.clear()
-                        st.session_state.last_sync = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        st.success(f"✅ Successfully synced {len(modified_products)} items!")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Sync failed: {str(e)}")
+        st.markdown(f'<div style="text-align: center; padding: 0.5rem; color: #667eea; font-weight: 600;">📝 {len(st.session_state.modified_items)} items modified</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div style="text-align: center; color: #999; padding: 0.5rem;">No changes to sync</div>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align: center; opacity: 0.5; padding: 0.5rem;">No changes</div>', unsafe_allow_html=True)
 
 # Summary footer
 if len(st.session_state.modified_items) > 0:
     st.markdown("---")
-    st.info(f"📝 **{len(st.session_state.modified_items)} items modified** - Click 'SYNC' button above to upload changes to Deliverect")
+    st.info(f"📝 **{len(st.session_state.modified_items)} items modified** - Scroll to top to sync changes to Deliverect")
