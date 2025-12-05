@@ -81,7 +81,3 @@ authentication/csv.py
 test_csv_format.py
 debug_upload.py
 
-# CSV data files
-itemCsv/
-*.csv
-
